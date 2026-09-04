@@ -33,7 +33,7 @@ FROM node:20-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=3000
+ENV PORT=10000
 
 # ffmpeg: needed by the export pipeline (roadmap step 9). openssl/ca-certificates:
 # required by Prisma's query engine at runtime on Debian-based images.
@@ -52,6 +52,6 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 USER nextjs
-EXPOSE 3000
+EXPOSE 10000
 
 CMD ["node", "server.js"]
