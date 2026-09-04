@@ -16,11 +16,17 @@ RUN npm ci --ignore-scripts
     COPY --from=deps /app/node_modules ./node_modules
     COPY . .
     ENV NEXT_TELEMETRY_DISABLED=1
-    
+
+    # next build imports every API route to collect metadata, which runs
+    # `new PrismaClient()` at module scope — it throws if DATABASE_URL is
+    # unset. This dummy value only satisfies that check; Prisma doesn't
+    # connect during build. Real DATABASE_URL comes from Render at runtime.
+    ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
+
     RUN apt-get update && apt-get install -y --no-install-recommends \
           openssl ca-certificates \
         && rm -rf /var/lib/apt/lists/*
-    
+
     RUN npm run build
 # ---------- runner: minimal production image ----------
 FROM node:20-slim AS runner
