@@ -1,10 +1,10 @@
-// VYRO — core data model
 // Deliberately trimmed to what the MVP roadmap needs (see README.md).
 // Phase 2 models (Team, Comment, Version, Template) are stubbed at the bottom
 // so the schema documents where they attach without building them out yet.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
