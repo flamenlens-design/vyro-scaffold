@@ -1,0 +1,45 @@
+{
+  "name": "vyro",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start -p $PORT",
+    "lint": "next lint",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "next": "16.3.3",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "@prisma/client": "^5.18.0",
+    "zod": "^3.23.8",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.5.2",
+    "lucide-react": "^0.427.0",
+    "next-auth": "^4.24.7",
+    "@next-auth/prisma-adapter": "^1.0.7",
+    "nodemailer": "^7.0.7",
+    "@aws-sdk/client-s3": "^3.629.0",
+    "@aws-sdk/s3-request-presigner": "^3.629.0",
+    "bullmq": "^5.12.0",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^22.2.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/nodemailer": "^6.4.16",
+    "prisma": "^5.18.0",
+    "tailwindcss": "^3.4.9",
+    "postcss": "^8.4.41",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.3.3",
+    "@eslint/eslintrc": "^3.2.0"
+  }
+}

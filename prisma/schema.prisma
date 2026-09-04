@@ -1,0 +1,332 @@
+// VYRO — core data model
+// Deliberately trimmed to what the MVP roadmap needs (see README.md).
+// Phase 2 models (Team, Comment, Version, Template) are stubbed at the bottom
+// so the schema documents where they attach without building them out yet.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Identity & billing ----------
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  createdAt     DateTime  @default(now())
+
+  credits       Int       @default(200) // starter credits
+  plan          Plan      @default(FREE)
+
+  accounts      Account[]
+  sessions      Session[]
+  projects      Project[]
+  brandKits     BrandKit[]
+  transactions  CreditTransaction[]
+}
+
+// ---------- NextAuth (Prisma adapter) ----------
+// Standard shape required by @next-auth/prisma-adapter — do not rename fields.
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum Plan {
+  FREE
+  CREATOR
+  STUDIO
+  ENTERPRISE
+}
+
+model CreditTransaction {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  amount      Int       // negative = spend, positive = topup
+  reason      String    // e.g. "video_generation:kling-2.1"
+  jobId       String?
+  createdAt   DateTime @default(now())
+}
+
+// ---------- Project & creative core ----------
+
+model Project {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  name          String
+  status        ProjectStatus @default(DRAFT)
+  purpose       String?       // Commercial / Social / Documentary / Film...
+  platform      String?       // TikTok / IG / YouTube / LinkedIn / Custom
+  aspectRatio   String        @default("9:16")
+  durationSec   Int?
+  tone          String?
+  visualStyle   String?       // free text, backed by StyleProfile below
+
+  styleProfile  StyleProfile?
+  script        Script?
+  scenes        Scene[]
+  characters    Character[]
+  assets        Asset[]
+  timeline      Timeline?
+  jobs          GenerationJob[]
+  history       GenerationHistory[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+enum ProjectStatus {
+  DRAFT
+  GENERATING
+  EDITING
+  READY
+  EXPORTED
+}
+
+// Persistent "visual identity" that gets injected into every scene prompt
+model StyleProfile {
+  id            String   @id @default(cuid())
+  projectId     String   @unique
+  project       Project  @relation(fields: [projectId], references: [id])
+  colorPalette  Json?    // array of hex values
+  lighting      String?
+  cameraStyle   String?
+  lensPref      String?
+  texture       String?
+  environment   String?
+  mood          String?
+}
+
+model Script {
+  id            String   @id @default(cuid())
+  projectId     String   @unique
+  project       Project  @relation(fields: [projectId], references: [id])
+  original      String   @db.Text
+  current       String   @db.Text
+  hook          String?
+  structure     Json?    // {hook:[0,3], context:[3,10], ...}
+  updatedAt     DateTime @updatedAt
+}
+
+model Character {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id])
+  name          String
+  age           Int?
+  appearance    String?  @db.Text
+  hair          String?
+  clothing      String?
+  personality   String?
+  voiceProfile  String?
+  referenceImageUrl String?
+}
+
+model Scene {
+  id              String   @id @default(cuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id])
+  order           Int
+  durationSec     Float
+  visualDesc      String   @db.Text
+  cameraAngle     String?
+  cameraMovement  String?
+  lighting        String?
+  mood            String?
+  dialogue        String?  @db.Text
+  voiceoverText   String?  @db.Text
+  soundEffects    String?
+  musicDirection  String?
+  rawPrompt       String?  @db.Text
+  enhancedPrompt  String?  @db.Text
+
+  generatedVideos GeneratedVideo[]
+  generatedImages GeneratedImage[]
+}
+
+// ---------- Generated media ----------
+
+model GeneratedVideo {
+  id          String   @id @default(cuid())
+  sceneId     String
+  scene       Scene    @relation(fields: [sceneId], references: [id])
+  modelId     String   // e.g. "kling-2.1"
+  url         String?
+  status      JobStatus @default(QUEUED)
+  costCredits Int       @default(0)
+  createdAt   DateTime  @default(now())
+}
+
+model GeneratedImage {
+  id          String   @id @default(cuid())
+  sceneId     String
+  scene       Scene    @relation(fields: [sceneId], references: [id])
+  modelId     String
+  url         String?
+  status      JobStatus @default(QUEUED)
+  costCredits Int       @default(0)
+  createdAt   DateTime  @default(now())
+}
+
+model Asset {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  type        AssetType
+  url         String
+  name        String?
+  createdAt   DateTime @default(now())
+}
+
+enum AssetType {
+  VIDEO
+  IMAGE
+  AUDIO
+  MUSIC
+  VOICEOVER
+  LOGO
+  FONT
+}
+
+// ---------- Timeline ----------
+
+model Timeline {
+  id          String   @id @default(cuid())
+  projectId   String   @unique
+  project     Project  @relation(fields: [projectId], references: [id])
+  tracks      TimelineTrack[]
+}
+
+model TimelineTrack {
+  id          String   @id @default(cuid())
+  timelineId  String
+  timeline    Timeline @relation(fields: [timelineId], references: [id])
+  type        TrackType
+  order       Int
+  items       Json      // array of {assetId/sceneId, start, end, trimIn, trimOut, effects}
+}
+
+enum TrackType {
+  VIDEO
+  AUDIO
+  MUSIC
+  VOICEOVER
+  CAPTION
+  OVERLAY
+}
+
+// ---------- Branding ----------
+
+model BrandKit {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  name        String
+  logoUrl     String?
+  colors      Json?     // array of hex values
+  fonts       Json?
+  createdAt   DateTime @default(now())
+}
+
+// ---------- AI models registry (drives the model-selection UI) ----------
+
+model AIModel {
+  id            String   @id @default(cuid())
+  slug          String   @unique // "kling-2.1"
+  displayName   String
+  category      MediaCategory
+  provider      String   // "fal", "replicate", "elevenlabs", "openrouter"...
+  qualityTier   String?  // "best-cinematic" | "fast" | "realistic-humans"...
+  speed         String?
+  costPerUnit   Int      // credits
+  maxDurationSec Int?
+  maxResolution String?
+  bestFor       String?
+  enabled       Boolean  @default(true)
+}
+
+enum MediaCategory {
+  TEXT
+  IMAGE
+  VIDEO
+  TTS
+  STT
+  MUSIC
+}
+
+// ---------- Job orchestration ----------
+
+model GenerationJob {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  type        String   // "script" | "storyboard" | "scene_video" | "voiceover" | ...
+  status      JobStatus @default(QUEUED)
+  input       Json?
+  output      Json?
+  error       String?
+  costCredits Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+model GenerationHistory {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  summary     String
+  diff        Json?
+  createdAt   DateTime @default(now())
+}
+
+// ---------- Phase 2 stubs (not wired into the MVP app yet) ----------
+// Team, Comment, Version, Subscription, CaptionTrack live here once
+// collaboration + template marketplace phases start.
