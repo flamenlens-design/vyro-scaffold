@@ -33,7 +33,7 @@ FROM node:20-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=10000
+ENV HOSTNAME=0.0.0.0
 
 # ffmpeg: needed by the export pipeline (roadmap step 9). openssl/ca-certificates:
 # required by Prisma's query engine at runtime on Debian-based images.
