@@ -5,14 +5,11 @@ import { requireUser } from "@/lib/auth/session";
 import { generateStoryboard, type StoryboardStyleContext } from "@/lib/ai/agents/storyboard-agent";
 import { errorMessage, errorStatus } from "@/lib/utils/errors";
 
-// NOTE ON "APPROVED": Script has no `approved` boolean in prisma/schema.prisma
-// today (see handoff summary — this is the schema gap I flagged rather than
-// editing schema.prisma myself). Until that field exists, this route treats
-// the caller's explicit `scriptApproved: true` as the approval signal, so
-// generation can never be triggered silently/accidentally off a script the
-// user hasn't actually signed off on in the UI.
+// `Script.approved` now exists in the schema (added when the "prompt →
+// script → storyboard" UI flow was wired up) — checked against the stored
+// row instead of trusting a client-supplied flag, closing the gap this
+// route previously flagged.
 const BodySchema = z.object({
-  scriptApproved: z.literal(true),
   regenerate: z.boolean().default(false),
 });
 
@@ -41,6 +38,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!project.script || !project.script.current.trim()) {
       return NextResponse.json(
         { error: "This project has no script yet — write and approve a script before storyboarding." },
+        { status: 400 }
+      );
+    }
+
+    if (!project.script.approved) {
+      return NextResponse.json(
+        { error: "Approve the script before generating a storyboard." },
         { status: 400 }
       );
     }

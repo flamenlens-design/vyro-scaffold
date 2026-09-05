@@ -10,6 +10,7 @@ const ASPECTS = ["9:16", "1:1", "16:9"];
 export default function NewProjectPage() {
   const router = useRouter();
   const [name, setName] = useState("");
+  const [brief, setBrief] = useState("");
   const [purpose, setPurpose] = useState(PURPOSES[0]);
   const [platform, setPlatform] = useState(PLATFORMS[0]);
   const [aspectRatio, setAspectRatio] = useState(ASPECTS[0]);
@@ -24,7 +25,7 @@ export default function NewProjectPage() {
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, purpose, platform, aspectRatio }),
+        body: JSON.stringify({ name, brief: brief || undefined, purpose, platform, aspectRatio }),
       });
       if (!res.ok) {
         const body = await res.json();
@@ -55,6 +56,21 @@ export default function NewProjectPage() {
             placeholder="Luxury perfume launch"
             className="rounded-lg border border-white/15 bg-obsidian/60 px-4 py-2.5 text-sm text-bone placeholder:text-ash"
           />
+        </label>
+
+        <label className="flex flex-col gap-2">
+          <span className="text-sm text-ash">What&apos;s this video about?</span>
+          <textarea
+            value={brief}
+            onChange={(e) => setBrief(e.target.value)}
+            placeholder="A 30-second launch film for a new luxury perfume — moody, tactile, no dialogue, ends on the product reveal."
+            rows={4}
+            className="rounded-lg border border-white/15 bg-obsidian/60 px-4 py-2.5 text-sm text-bone placeholder:text-ash"
+          />
+          <span className="text-xs text-ash">
+            Optional — you can skip this and work it out with the Creative Director inside the
+            studio instead.
+          </span>
         </label>
 
         <fieldset className="flex flex-col gap-2">

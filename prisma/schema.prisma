@@ -101,6 +101,9 @@ model Project {
   durationSec   Int?
   tone          String?
   visualStyle   String?       // free text, backed by StyleProfile below
+  // Free-text creative brief captured on project creation (the "prompt" the
+  // new-project form was missing) — seeds the first script-generation call.
+  brief         String?       @db.Text
 
   styleProfile  StyleProfile?
   script        Script?
@@ -146,6 +149,10 @@ model Script {
   current       String   @db.Text
   hook          String?
   structure     Json?    // {hook:[0,3], context:[3,10], ...}
+  // Closes the "known gap" flagged in the previous merge round: the
+  // storyboard route was trusting a client-supplied `scriptApproved` flag
+  // because nothing persisted approval. Now it does.
+  approved      Boolean  @default(false)
   updatedAt     DateTime @updatedAt
 }
 

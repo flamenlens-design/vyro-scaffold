@@ -124,12 +124,32 @@ later is additive, not a migration risk.
 10. Credit accounting on every `GenerationJob` completion — also unblocks
     turning BullMQ retries back on safely (see `lib/queue/worker.ts`)
 
+**"Prompt → script → storyboard → brand kit" UI, wired after the six-track
+merge (previously the agents/routes existed but nothing in the studio
+actually called them):**
+- `/project/new` now has an optional creative-brief textarea, stored on
+  `Project.brief` (new field).
+- `lib/ai/agents/script-agent.ts` gained `generateScript()` — previously the
+  agent layer could only refine/restructure a script that already existed;
+  nothing generated a first draft from a brief.
+- `POST /api/ai/script` now takes `projectId` on every action, persists to
+  the `Script` row (`generate`/`refine`/`structure`/`approve`), and the new
+  `Script.approved` field replaces the old client-trusted flag.
+- `POST /api/projects/[id]/storyboard` now checks the *stored*
+  `Script.approved` instead of a request-body claim — closes the gap noted
+  below.
+- The studio's right panel (`creative-studio-panel.tsx`) is a real
+  Creative-Director chat plus a script generate/refine/approve flow and a
+  storyboard trigger that displays the generated scenes inline (there's no
+  separate Scenes browser yet — see next roadmap item).
+- The left rail's "Brand" button (`brand-tool-button.tsx`) opens a modal
+  that calls the brand-kit route and displays the extracted colors/voice/tone.
+- **Not yet built**: a proper Scenes/Storyboard browser (scenes currently
+  only show as a flat list inside the script panel right after generation,
+  not as a persistent view), and the rest of the left rail (Assets, Media,
+  Text, Captions, Audio, AI Tools) is still non-functional.
+
 **Known gaps flagged during this round, not yet resolved:**
-- `Script` has no `approved` boolean, and nothing yet persists a `Script` row
-  from `POST /api/ai/script` (that route is still a stateless agent call). The
-  storyboard route works around this by requiring an explicit
-  `{"scriptApproved": true}` in the request body rather than trusting stored
-  state — revisit once script persistence + a real approval flow exist.
 - The Brand Kit agent extracts text/CSS only — no headless rendering (so a
   client-rendered site with an empty initial HTML shell yields little), and
   no vision input. Fixing the latter means widening `ChatMessage.content` in

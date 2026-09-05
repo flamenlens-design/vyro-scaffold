@@ -1,5 +1,60 @@
 import { getTextProvider } from "../providers";
 
+export interface ScriptBriefContext {
+  purpose?: string | null;
+  platform?: string | null;
+  aspectRatio?: string | null;
+  durationSec?: number | null;
+  tone?: string | null;
+  visualStyle?: string | null;
+}
+
+export interface GeneratedScript {
+  script: string;
+  hook: string;
+}
+
+// Turns the free-text creative brief from the new-project form into a first
+// draft script. This is the piece that was missing end-to-end: refineScript
+// below can only transform an *existing* script, and the Creative Director
+// agent only chats — nothing previously produced an initial draft.
+export async function generateScript(
+  brief: string,
+  context: ScriptBriefContext = {}
+): Promise<GeneratedScript> {
+  const provider = getTextProvider();
+  const contextLines = [
+    context.purpose && `Purpose: ${context.purpose}`,
+    context.platform && `Platform: ${context.platform}`,
+    context.aspectRatio && `Aspect ratio: ${context.aspectRatio}`,
+    context.durationSec && `Target duration: ${context.durationSec}s`,
+    context.tone && `Tone: ${context.tone}`,
+    context.visualStyle && `Visual style: ${context.visualStyle}`,
+  ].filter(Boolean).join("\n");
+
+  const result = await provider.generate({
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a professional commercial/film scriptwriter. Given a creative brief, write a " +
+          "first-draft script/voiceover for a short video. Return ONLY valid JSON matching exactly " +
+          '{"script": "...", "hook": "..."} where "script" is the full script text (scene ' +
+          'directions in brackets are fine) and "hook" is just the opening line, isolated, since ' +
+          "the first few seconds get evaluated separately. No markdown, no commentary.",
+      },
+      {
+        role: "user",
+        content: contextLines ? `${contextLines}\n\nBrief:\n${brief}` : `Brief:\n${brief}`,
+      },
+    ],
+    jsonMode: true,
+    temperature: 0.8,
+  });
+
+  return JSON.parse(result.text) as GeneratedScript;
+}
+
 export type ScriptTransform =
   | "cinematic" | "emotional" | "viral" | "concise" | "storytelling"
   | "dialogue" | "hooks" | "pacing" | "luxury" | "humorous" | "dramatic";

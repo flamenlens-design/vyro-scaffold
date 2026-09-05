@@ -12,6 +12,9 @@ const CreateSchema = z.object({
   durationSec: z.number().positive().optional(),
   tone: z.string().optional(),
   visualStyle: z.string().optional(),
+  // The creative brief / prompt from the new-project form. Optional so
+  // existing callers/tests that omit it don't break.
+  brief: z.string().max(4000).optional(),
 });
 
 export async function GET() {

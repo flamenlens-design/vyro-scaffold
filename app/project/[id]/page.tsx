@@ -1,13 +1,17 @@
 // Studio shell: left tool rail, center preview, bottom timeline, right AI panel.
-// The timeline panel is now wired to real data (Timeline/TimelineTrack) via
-// TimelineEditor; the rest of the shell (preview, AI panel) is still a layout
-// skeleton — wire that up before treating those panels as functional.
+// The timeline panel is wired to real data (Timeline/TimelineTrack) via
+// TimelineEditor; the right panel now runs the actual prompt -> script ->
+// storyboard flow via CreativeStudioPanel, and the "Brand" rail button opens
+// the Pomelli-style URL extraction flow via BrandToolButton. The rest of the
+// left rail (Assets, Scenes, Media, etc.) is still a layout skeleton.
 
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/client";
 import TimelineEditor from "./timeline-editor";
 import { buildMockTracks, coerceTrackItems, type EditorTrack } from "./timeline-utils";
+import CreativeStudioPanel from "./creative-studio-panel";
+import BrandToolButton from "./brand-tool-button";
 
 const LEFT_TOOLS = ["Assets", "Scenes", "Media", "Text", "Captions", "Brand", "Audio", "AI Tools"];
 
@@ -23,6 +27,9 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
     include: {
       timeline: { include: { tracks: { orderBy: { order: "asc" } } } },
       assets: { orderBy: { createdAt: "asc" } },
+      script: true,
+      brandKit: true,
+      scenes: { orderBy: { order: "asc" } },
     },
   });
 
@@ -62,15 +69,19 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
       <div className="flex flex-1 overflow-hidden">
         {/* Left tool rail */}
         <aside className="flex w-16 shrink-0 flex-col items-center gap-4 border-r border-white/10 py-4">
-          {LEFT_TOOLS.map((tool) => (
-            <button
-              key={tool}
-              title={tool}
-              className="flex h-10 w-10 items-center justify-center rounded-lg text-[10px] text-ash hover:bg-white/5 hover:text-bone"
-            >
-              {tool.slice(0, 2)}
-            </button>
-          ))}
+          {LEFT_TOOLS.map((tool) =>
+            tool === "Brand" ? (
+              <BrandToolButton key={tool} projectId={project.id} initialBrandKit={project.brandKit} />
+            ) : (
+              <button
+                key={tool}
+                title={tool}
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-[10px] text-ash hover:bg-white/5 hover:text-bone"
+              >
+                {tool.slice(0, 2)}
+              </button>
+            )
+          )}
         </aside>
 
         {/* Center: preview + timeline */}
@@ -84,16 +95,12 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
         </div>
 
         {/* Right: properties + AI assistant */}
-        <aside className="w-80 shrink-0 border-l border-white/10 p-4">
-          <p className="text-sm font-medium text-bone">Creative Director</p>
-          <p className="mt-1 text-xs text-ash">
-            Ask for a change in plain language — e.g. &quot;make the first 3 seconds more exciting.&quot;
-          </p>
-          <div className="mt-4 h-64 rounded-lg border border-white/10" />
-          <textarea
-            placeholder="Type a note…"
-            className="mt-3 w-full rounded-lg border border-white/10 bg-obsidian/60 p-2 text-sm text-bone placeholder:text-ash"
-            rows={2}
+        <aside className="w-80 shrink-0 overflow-y-auto border-l border-white/10 p-4">
+          <CreativeStudioPanel
+            projectId={project.id}
+            initialBrief={project.brief}
+            initialScript={project.script}
+            initialSceneCount={project.scenes.length}
           />
         </aside>
       </div>
