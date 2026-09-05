@@ -1,17 +1,54 @@
 // Studio shell: left tool rail, center preview, bottom timeline, right AI panel.
-// This is a layout skeleton — wire real state (project data, timeline, chat)
-// in before treating any panel as functional.
+// The timeline panel is now wired to real data (Timeline/TimelineTrack) via
+// TimelineEditor; the rest of the shell (preview, AI panel) is still a layout
+// skeleton — wire that up before treating those panels as functional.
+
+import { notFound, redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth/session";
+import { prisma } from "@/lib/db/client";
+import TimelineEditor from "./timeline-editor";
+import { buildMockTracks, coerceTrackItems, type EditorTrack } from "./timeline-utils";
 
 const LEFT_TOOLS = ["Assets", "Scenes", "Media", "Text", "Captions", "Brand", "Audio", "AI Tools"];
 
 // Next.js 15+ makes dynamic route `params` async — must be awaited before use.
 export default async function StudioPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
+  const user = await getCurrentUser();
+  if (!user) redirect("/signin");
+
+  const project = await prisma.project.findUnique({
+    where: { id },
+    include: {
+      timeline: { include: { tracks: { orderBy: { order: "asc" } } } },
+      assets: { orderBy: { createdAt: "asc" } },
+    },
+  });
+
+  if (!project || project.userId !== user.id) notFound();
+
+  const dbTracks: EditorTrack[] = (project.timeline?.tracks ?? []).map((t) => ({
+    id: t.id,
+    // Prisma's generated TrackType enum and our local TrackType union share
+    // the same runtime string values; cast through `unknown` at this one
+    // boundary rather than importing the Prisma enum into shared/client code.
+    type: t.type as unknown as EditorTrack["type"],
+    order: t.order,
+    items: coerceTrackItems(t.items),
+  }));
+  const hasRealClips = dbTracks.some((t) => t.items.length > 0);
+
+  const isMock = !hasRealClips;
+  const tracks: EditorTrack[] = isMock
+    ? buildMockTracks(project.assets)
+    : dbTracks;
+
   return (
     <div className="flex h-screen flex-col bg-void text-bone">
       {/* Top bar */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 px-4">
-        <span className="font-display italic text-bone">Untitled project</span>
+        <span className="font-display italic text-bone">{project.name}</span>
         <div className="flex items-center gap-3 text-sm text-ash">
           <button className="hover:text-bone">Undo</button>
           <button className="hover:text-bone">Redo</button>
@@ -41,9 +78,8 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
           <div className="flex flex-1 items-center justify-center bg-obsidian/40">
             <div className="aspect-[9/16] h-[70%] rounded-xl2 border border-white/10 bg-void" />
           </div>
-          <div className="h-48 shrink-0 border-t border-white/10 bg-obsidian/60 p-3">
-            <p className="text-xs text-ash">Timeline — project {id}</p>
-            <div className="mt-2 h-32 rounded-lg border border-dashed border-white/10" />
+          <div className="h-72 shrink-0 border-t border-white/10 bg-obsidian/60 p-3">
+            <TimelineEditor projectId={project.id} initialTracks={tracks} isMock={isMock} />
           </div>
         </div>
 

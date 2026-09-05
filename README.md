@@ -72,19 +72,99 @@ later is additive, not a migration risk.
   into `/project/[id]`; dashboard (`/dashboard`) is now a real server component
   reading the signed-in user's projects from Postgres, with a `redirect("/signin")`
   guard for signed-out visitors
+- **Storyboard Agent** (`lib/ai/agents/storyboard-agent.ts`) — turns an approved
+  script into a shot list; `POST /api/projects/[id]/storyboard` persists it as
+  `Scene` rows, with guards against clobbering an existing storyboard or one
+  that already has generated media attached
+- **Real image/video providers** (`lib/ai/providers/fal-image.ts`,
+  `fal-video.ts`) — fal.ai-backed, feature-flagged on `FAL_API_KEY` (falls
+  back to mocks otherwise). Image: FLUX 1.1 Pro Ultra (default) or Seedream V4
+  (reference-guided edits). Video: Kling 2.1 (standard/pro/master), Seedance
+  2.0 (incl. `-fast`), Wan 2.6 — selected per-request via the existing `model`
+  field, never hardcoded
+- **Real voice providers** (`lib/ai/providers/elevenlabs.ts`,
+  `groq-whisper.ts`) — feature-flagged on `ELEVENLABS_API_KEY` /
+  `GROQ_API_KEY`. TTS defaults to the cheaper `eleven_flash_v2_5`
+  (`VYRO_TTS_MODEL=eleven_multilingual_v2` to opt into emotion/accent
+  control); STT defaults to `whisper-large-v3-turbo`
+  (`VYRO_STT_MODEL=whisper-large-v3` for a higher-accuracy pass)
+- **Generation queue** (`lib/queue/`) — BullMQ-backed background processing
+  for `scene_image` / `scene_video` / `voiceover` / `music` jobs. API routes
+  enqueue via `enqueueGenerationJob()`; a standalone worker process (`npm run
+  worker`) picks jobs up, calls whatever provider is currently registered
+  (real or mock), and writes `GenerationJob`/`GenerationHistory` rows.
+  Retries are off by default until credit-accounting (roadmap #10) exists, to
+  avoid double-charging a provider on retry
+- **Brand Kit agent** (`lib/ai/agents/brand-kit-agent.ts`) — the Pomelli-style
+  "give me a URL" feature. `POST /api/projects/[id]/brand-kit` fetches the
+  homepage (+ up to 2 linked about/brand pages), extracts colors/fonts/logo
+  deterministically from HTML/CSS, and asks the TextProvider to synthesize
+  brand voice/tone from the copy. Text-only for now — no headless rendering
+  or vision input (see "Known limitations" in the agent file)
+- **Timeline editor** (`app/project/[id]/timeline-editor.tsx`) — drag-to-reorder,
+  trim handles, playhead scrubbing, and save-to-Postgres via
+  `PATCH /api/projects/[id]/timeline`, backed by `Timeline`/`TimelineTrack.items`.
+  Falls back to placeholder clips (built from any real `Asset` rows that
+  exist) when a project has no timeline yet
 
 **Next (MVP completion, in order):**
 1. ~~Auth (`next-auth`, email + Google OAuth)~~ ✅
 2. ~~Project creation flow wired to Prisma (`POST /api/projects`)~~ ✅
-3. **Storyboard Agent** — turns an approved script into `Scene` rows with prompts *(next)*
-4. Generation queue (BullMQ + Redis) — background jobs for scene image/video
-5. Connect one real image provider (fal.ai `flux-1.1-pro`) and one real video
-   provider (fal.ai `kling-2.1`) behind the existing interfaces
-6. Basic timeline (drag/trim/reorder) backed by `TimelineTrack.items` JSON
-7. Caption generation (Groq Whisper) + basic styling
-8. Logo overlay from `BrandKit`
+3. ~~Storyboard Agent~~ ✅
+4. ~~Generation queue (BullMQ + Redis)~~ ✅
+5. ~~Connect one real image provider (fal.ai) and one real video provider (fal.ai)~~ ✅
+6. ~~Basic timeline (drag/trim/reorder)~~ ✅
+7. ~~Caption generation (Groq Whisper)~~ ✅ — provider is wired; UI styling/
+   display of captions on the timeline is still open
+8. Logo overlay from `BrandKit` — extraction is done (`BrandKit` now includes
+   `voiceTone`/`toneKeywords`/`description`, and is scoped per-project via
+   `BrandKit.projectId`); actually compositing the logo onto rendered video is
+   not yet wired
 9. Export pipeline (server-side render via ffmpeg worker, or a render API)
-10. Credit accounting on every `GenerationJob` completion
+10. Credit accounting on every `GenerationJob` completion — also unblocks
+    turning BullMQ retries back on safely (see `lib/queue/worker.ts`)
+
+**Known gaps flagged during this round, not yet resolved:**
+- `Script` has no `approved` boolean, and nothing yet persists a `Script` row
+  from `POST /api/ai/script` (that route is still a stateless agent call). The
+  storyboard route works around this by requiring an explicit
+  `{"scriptApproved": true}` in the request body rather than trusting stored
+  state — revisit once script persistence + a real approval flow exist.
+- The Brand Kit agent extracts text/CSS only — no headless rendering (so a
+  client-rendered site with an empty initial HTML shell yields little), and
+  no vision input. Fixing the latter means widening `ChatMessage.content` in
+  `lib/ai/types.ts` to accept image parts (see the agent file's closing
+  comment for the exact shape) plus an `OpenRouterProvider` update to pass
+  multimodal content through.
+
+**Merge notes (this round combined six parallel tracks):**
+- `lib/ai/providers/index.ts` had two independently-written copies (one
+  wiring fal.ai image/video, one wiring ElevenLabs/Groq) — combined by hand,
+  no logic from either changed.
+- `prisma/schema.prisma`: added `BrandKit.projectId` (unique, optional) so a
+  kit scopes to one project instead of being shared user-wide, plus
+  `voiceTone`/`toneKeywords`/`description` fields the brand-kit agent already
+  synthesizes but had nowhere to persist. Added `Project.brandKit` as the
+  inverse relation. Run `npx prisma db push` after pulling this to apply it.
+- `package.json`: added `tsx` (devDependency) and a `worker` script
+  (`tsx lib/queue/run-worker.ts`) so the queue's worker process is actually
+  runnable — it was built assuming a TS runner would be added at merge time.
+- Fixed one real lint error surfaced by the strict Next 16 config: a
+  `setState` called synchronously inside a `useEffect` in the timeline editor
+  (clamping the playhead when the timeline shrinks). Replaced with a value
+  derived at render time instead of synced via an effect — see the comment
+  in `timeline-editor.tsx`.
+- `npx tsc --noEmit` currently reports 12 errors, all one root cause: this
+  sandbox can't reach `binaries.prisma.sh`, so `prisma generate` fails and
+  `@prisma/client`'s generated types don't exist (same limitation the
+  original scaffold's README documented for `lib/db/client.ts`). Every error
+  is either a missing export from `@prisma/client` directly, or an
+  `implicitly has an 'any' type` on a variable downstream of an untyped
+  Prisma query result. Confirmed by running the identical check against the
+  pre-merge scaffold, which shows the same failure mode at smaller scale.
+  Run `npx prisma generate` on a machine with real network access and these
+  clear on their own — nothing here is a bug in the merged code.
+- `npx eslint .` is clean.
 
 **Auth setup notes:**
 - Google: create OAuth credentials at the Google Cloud Console, set the redirect

@@ -110,6 +110,7 @@ model Project {
   timeline      Timeline?
   jobs          GenerationJob[]
   history       GenerationHistory[]
+  brandKit      BrandKit?
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -257,15 +258,29 @@ enum TrackType {
 
 // ---------- Branding ----------
 
+// projectId added during merge of the brand-kit-agent track: the agent
+// extracts a kit per-project (given a URL on a specific project), but the
+// original model was keyed by userId only, which meant one kit shared
+// across all of a user's projects. Optional + unique so a project can go
+// without a kit, and at most one kit attaches per project; userId is kept
+// so a user's kits are still easy to list/reuse across projects later.
 model BrandKit {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  name        String
-  logoUrl     String?
-  colors      Json?     // array of hex values
-  fonts       Json?
-  createdAt   DateTime @default(now())
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  projectId     String?  @unique
+  project       Project? @relation(fields: [projectId], references: [id])
+  name          String
+  logoUrl       String?
+  colors        Json?     // array of hex values
+  fonts         Json?
+  // Brand-voice signals produced by the brand-kit extraction agent
+  // (lib/ai/agents/brand-kit-agent.ts) — added during merge, since the
+  // agent synthesizes these but the original model had nowhere to put them.
+  voiceTone     String?
+  toneKeywords  Json?     // array of short adjective strings
+  description   String?  @db.Text
+  createdAt     DateTime @default(now())
 }
 
 // ---------- AI models registry (drives the model-selection UI) ----------
