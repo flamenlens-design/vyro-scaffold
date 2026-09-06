@@ -173,12 +173,24 @@ export async function generateStoryboard(
     ],
     jsonMode: true,
     temperature: 0.6,
+    // No maxTokens here defaulted to the provider's 2000-token fallback,
+    // which truncates mid-JSON for anything beyond ~4-5 scenes (each scene
+    // has 9 text fields including a full prompt paragraph) — that's a
+    // genuine truncation, not a fence issue, so json-parse.ts's
+    // fence-stripping can't repair it. This is what was actually causing
+    // "Storyboard agent returned invalid JSON" after the fence fix.
+    maxTokens: 6000,
   });
 
   let parsed: RawStoryboardResponse;
   try {
     parsed = parseJsonResponse<RawStoryboardResponse>(result.text);
-  } catch {
+  } catch (err) {
+    // Log the raw response server-side (Render logs / worker logs) so a
+    // future failure — truncation, a model returning prose instead of JSON,
+    // etc. — is diagnosable without another round of guessing. The client-
+    // facing error stays generic; the useful detail goes to the log only.
+    console.error("[storyboard-agent] failed to parse LLM response:", err, "\nraw text:", result.text);
     throw new Error("Storyboard agent returned invalid JSON");
   }
 
