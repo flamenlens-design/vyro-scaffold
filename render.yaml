@@ -7,9 +7,7 @@ services:
     plan: starter
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: vyro-db
-          property: connectionString
+        sync: false # Neon-hosted Postgres, not Render's own — paste the Neon connection string (with ?sslmode=require) when prompted
       - key: REDIS_URL
         fromService:
           name: vyro-redis
@@ -58,9 +56,7 @@ services:
     plan: starter
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: vyro-db
-          property: connectionString
+        sync: false # same Neon connection string as vyro-web — set it here too, Render doesn't share sync:false values across services
       - key: REDIS_URL
         fromService:
           name: vyro-redis
@@ -88,6 +84,5 @@ services:
     plan: starter
     ipAllowList: []
 
-databases:
-  - name: vyro-db
-    plan: starter
+# No `databases:` block — Postgres lives on Neon, not Render. DATABASE_URL
+# is set as sync:false on both services above instead of fromDatabase.

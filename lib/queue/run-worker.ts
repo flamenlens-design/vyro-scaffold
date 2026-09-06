@@ -1,12 +1,10 @@
 // Standalone entrypoint for the generation worker process.
 //
-// This scaffold has no "worker" script in package.json yet (out of scope
-// for this change — see summary for how to add one). Until then, run this
-// file directly with a TS runner, e.g.:
-//
-//   npx tsx lib/queue/run-worker.ts
-//
-// or compile with `tsc` and run the emitted JS with `node`.
+// Started via `npm run worker` (see package.json), which just runs this
+// file with tsx. Render's vyro-worker service (render.yaml) runs that
+// same command against the app's Docker image — see the Dockerfile's
+// runner stage for why that image needs more than just the Next.js
+// standalone build for this to actually work.
 
 import { startGenerationWorker } from "./worker";
 

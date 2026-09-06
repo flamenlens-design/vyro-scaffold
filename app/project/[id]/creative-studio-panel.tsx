@@ -214,6 +214,17 @@ export default function CreativeStudioPanel({
   const jobsActive = jobs.some((j) => j.status === "QUEUED" || j.status === "RUNNING");
   const generating = starting || jobsActive;
 
+  // Aggregate progress across the whole batch (jobs from `refreshJobs` is
+  // capped at 50, newest-first, per the /generate GET route — good enough
+  // since a batch is scenes + voiceover + music, rarely near that cap).
+  // SUCCEEDED and FAILED both count as "done" for the bar so it reaches
+  // 100% even when a job errors out, rather than stalling short forever.
+  const jobsTotal = jobs.length;
+  const jobsSucceeded = jobs.filter((j) => j.status === "SUCCEEDED").length;
+  const jobsFailed = jobs.filter((j) => j.status === "FAILED").length;
+  const jobsDone = jobsSucceeded + jobsFailed;
+  const progressPct = jobsTotal > 0 ? Math.round((jobsDone / jobsTotal) * 100) : 0;
+
   // Poll only while something is actually in flight. The effect body itself
   // never calls setState directly — it only subscribes an interval whose
   // callback (refreshJobs) updates state asynchronously, which is the
@@ -414,9 +425,33 @@ export default function CreativeStudioPanel({
                     {generating ? "Generating…" : "Generate videos, voiceover & music"}
                   </button>
                   <p className="text-[10px] text-ash">
-                    Runs in the background — video per scene (Seedance), one combined voiceover, one
-                    music track. Only re-generates parts that haven&apos;t already succeeded.
+                    Runs in the background — video per scene, one combined voiceover, one music
+                    track. Only re-generates parts that haven&apos;t already succeeded.
                   </p>
+
+                  {jobsTotal > 0 && (
+                    <div className="space-y-1.5 rounded-lg border border-white/10 p-2">
+                      <div className="flex items-center justify-between text-[10px] text-ash">
+                        <span>
+                          {jobsDone} of {jobsTotal} done
+                          {jobsFailed > 0 ? ` · ${jobsFailed} failed` : ""}
+                        </span>
+                        <span>{progressPct}%</span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                        <div className="flex h-full w-full">
+                          <div
+                            className="h-full bg-emerald-400/80 transition-[width] duration-500"
+                            style={{ width: `${jobsTotal > 0 ? (jobsSucceeded / jobsTotal) * 100 : 0}%` }}
+                          />
+                          <div
+                            className="h-full bg-ember/80 transition-[width] duration-500"
+                            style={{ width: `${jobsTotal > 0 ? (jobsFailed / jobsTotal) * 100 : 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {jobs.length > 0 && (
                     <div className="space-y-1 rounded-lg border border-white/10 p-2">
