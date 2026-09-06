@@ -30,6 +30,14 @@ import {
 interface ProviderRunResult {
   output: Prisma.InputJsonValue;
   summary: string;
+  // Optional side-effect write beyond GenerationJob/GenerationHistory — the
+  // gap this fixes: results were only ever landing in GenerationJob.output
+  // (a JSON blob keyed by job id), with nothing queryable by scene or
+  // listable per-project. GeneratedImage/GeneratedVideo/Asset already
+  // existed in the schema for exactly this (the storyboard route's
+  // clobber-guard even reads scene.generatedVideos/generatedImages), they
+  // just had nothing writing to them.
+  persist?: (tx: Prisma.TransactionClient) => Promise<void>;
 }
 
 // Dispatches to the right provider for a given job type and shapes the
@@ -39,7 +47,8 @@ interface ProviderRunResult {
 // flag it if a type is ever added to the schema map without a handler here.
 async function runProvider(
   type: GenerationJobType,
-  rawInput: unknown
+  rawInput: unknown,
+  projectId: string
 ): Promise<ProviderRunResult> {
   switch (type) {
     case "scene_image": {
@@ -48,6 +57,15 @@ async function runProvider(
       return {
         output: { ...result, sceneId: input.sceneId },
         summary: `Generated image for scene ${input.sceneId} with ${result.modelUsed}`,
+        persist: (tx) =>
+          tx.generatedImage.create({
+            data: {
+              sceneId: input.sceneId,
+              modelId: result.modelUsed,
+              url: result.url,
+              status: "SUCCEEDED",
+            },
+          }).then(() => undefined),
       };
     }
     case "scene_video": {
@@ -56,6 +74,15 @@ async function runProvider(
       return {
         output: { ...result, sceneId: input.sceneId },
         summary: `Generated video for scene ${input.sceneId} with ${result.modelUsed}`,
+        persist: (tx) =>
+          tx.generatedVideo.create({
+            data: {
+              sceneId: input.sceneId,
+              modelId: result.modelUsed,
+              url: result.url,
+              status: "SUCCEEDED",
+            },
+          }).then(() => undefined),
       };
     }
     case "voiceover": {
@@ -66,6 +93,18 @@ async function runProvider(
         summary: input.sceneId
           ? `Generated voiceover for scene ${input.sceneId}`
           : "Generated voiceover",
+        // Voiceover isn't always scene-scoped (a single combined track for
+        // the whole video is a valid, common case) — Asset (project-scoped)
+        // rather than GeneratedVideo/Image (scene-scoped) is the right home.
+        persist: (tx) =>
+          tx.asset.create({
+            data: {
+              projectId,
+              type: "VOICEOVER",
+              url: result.url,
+              name: input.sceneId ? `Voiceover — scene ${input.sceneId}` : "Voiceover",
+            },
+          }).then(() => undefined),
       };
     }
     case "music": {
@@ -76,6 +115,10 @@ async function runProvider(
         summary: input.sceneId
           ? `Generated music for scene ${input.sceneId}`
           : "Generated music",
+        persist: (tx) =>
+          tx.asset.create({
+            data: { projectId, type: "MUSIC", url: result.url, name: "Background music" },
+          }).then(() => undefined),
       };
     }
     default: {
@@ -116,21 +159,22 @@ async function processGenerationJob(bullJob: Job<GenerationJobPayload>) {
   }
 
   try {
-    const { output, summary } = await runProvider(row.type, row.input);
+    const { output, summary, persist } = await runProvider(row.type, row.input, row.projectId);
 
-    await prisma.$transaction([
-      prisma.generationJob.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.generationJob.update({
         where: { id: row.id },
         data: { status: "SUCCEEDED", output, error: null },
-      }),
-      prisma.generationHistory.create({
+      });
+      await tx.generationHistory.create({
         data: {
           projectId: row.projectId,
           summary,
           diff: { jobId: row.id, type: row.type, output } as Prisma.InputJsonValue,
         },
-      }),
-    ]);
+      });
+      if (persist) await persist(tx);
+    });
 
     return output;
   } catch (err) {

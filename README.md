@@ -124,6 +124,35 @@ later is additive, not a migration risk.
 10. Credit accounting on every `GenerationJob` completion — also unblocks
     turning BullMQ retries back on safely (see `lib/queue/worker.ts`)
 
+**"Generate" pipeline — the trigger from scenes to real media, wired after
+testing surfaced that the queue/worker/providers all existed but nothing
+ever called `enqueueGenerationJob()`:**
+- `POST /api/projects/[id]/generate` is the actual trigger: enqueues one
+  `scene_video` job per scene (Seedance 2.0, per the earlier cost analysis —
+  not the video provider's own default of Kling 2.1 Standard), one combined
+  `voiceover` job across all scenes' `voiceoverText` (matches the timeline's
+  single continuous voiceover track, not per-scene), and one `music` job for
+  the whole video. Skips anything that already succeeded unless
+  `regenerate: true` is passed — avoids re-billing a provider for output
+  that's already there.
+- `GET` on the same route polls `GenerationJob` status — the studio panel's
+  "Generate videos, voiceover & music" button uses this to show live
+  per-job progress (queued/running/done/failed) until everything settles.
+- **Fixed a real gap in `lib/queue/worker.ts` while wiring this**: on success
+  it only ever wrote to `GenerationJob.output` (a JSON blob keyed by job id)
+  and a `GenerationHistory` row — nothing wrote to `GeneratedImage`/
+  `GeneratedVideo`/`Asset`, even though those models already existed
+  specifically for this (the storyboard route's clobber-guard even reads
+  `scene.generatedVideos`/`generatedImages`). The worker now persists to the
+  right table per job type inside the same transaction.
+- **Not yet wired**: the timeline still shows placeholder clips even after a
+  successful generation — nothing yet writes finished asset URLs back into
+  `TimelineTrack.items`. That's the next piece: once `GeneratedVideo`/`Asset`
+  rows exist, the timeline needs to either read them directly or get synced
+  on job completion.
+- Default voice (`21m00Tcm4TlviJqp0N4X`, ElevenLabs' public "Rachel") is a
+  placeholder until a real voice-picker UI exists.
+
 **"Prompt → script → storyboard → brand kit" UI, wired after the six-track
 merge (previously the agents/routes existed but nothing in the studio
 actually called them):**

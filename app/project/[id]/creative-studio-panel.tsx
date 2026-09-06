@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 // Deliberately not importing the generated Prisma `Script` type here — see
@@ -55,6 +55,12 @@ export default function CreativeStudioPanel({
   const [scenes, setScenes] = useState<
     { order: number; visualDesc: string; cameraAngle: string | null; durationSec: number }[] | null
   >(null);
+
+  // --- Asset generation (video/voiceover/music) ---
+  const [starting, setStarting] = useState(false); // true only for the initial POST, before the first job list arrives
+  const [jobs, setJobs] = useState<
+    { id: string; type: string; status: string; error: string | null }[]
+  >([]);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -170,6 +176,63 @@ export default function CreativeStudioPanel({
       setStoryboardLoading(false);
     }
   }
+
+  async function generateAssets() {
+    if (starting) return;
+    setError(null);
+    setStarting(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ regenerate: false }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Failed to start generation");
+      await refreshJobs(); // populate the list immediately rather than waiting for the first poll tick
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start generation");
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  async function refreshJobs() {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/generate`);
+      const body = await res.json();
+      if (res.ok) setJobs(body.jobs);
+    } catch {
+      // transient — the next poll tick will retry; don't surface a fetch
+      // hiccup as a hard error while jobs are still legitimately running
+    }
+  }
+
+  // Derived at render time, not synced via setState-in-effect (same fix as
+  // the timeline playhead earlier in this project) — `generating` is just a
+  // read of current state, never a value React needs to reconcile.
+  const jobsActive = jobs.some((j) => j.status === "QUEUED" || j.status === "RUNNING");
+  const generating = starting || jobsActive;
+
+  // Poll only while something is actually in flight. The effect body itself
+  // never calls setState directly — it only subscribes an interval whose
+  // callback (refreshJobs) updates state asynchronously, which is the
+  // sanctioned pattern rather than the flagged one.
+  useEffect(() => {
+    if (!generating) return;
+    const interval = setInterval(refreshJobs, 4000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshJobs is stable enough here; only `generating` should restart the interval
+  }, [generating]);
+
+  // Load existing job status once on mount — so refreshing mid-generation
+  // (or just reopening the project later) shows real state instead of an
+  // empty list until the button is clicked again.
+  useEffect(() => {
+    if (sceneCount === 0) return;
+    refreshJobs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally mount-only
+  }, []);
 
   return (
     <div className="flex h-full flex-col text-sm">
@@ -338,6 +401,52 @@ export default function CreativeStudioPanel({
                       <p className="mt-0.5 text-bone">{s.visualDesc}</p>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {sceneCount > 0 && (
+                <div className="space-y-2 border-t border-white/10 pt-4">
+                  <button
+                    onClick={generateAssets}
+                    disabled={generating}
+                    className="w-full rounded-full bg-signal px-4 py-2 text-xs font-medium text-white disabled:opacity-40"
+                  >
+                    {generating ? "Generating…" : "Generate videos, voiceover & music"}
+                  </button>
+                  <p className="text-[10px] text-ash">
+                    Runs in the background — video per scene (Seedance), one combined voiceover, one
+                    music track. Only re-generates parts that haven&apos;t already succeeded.
+                  </p>
+
+                  {jobs.length > 0 && (
+                    <div className="space-y-1 rounded-lg border border-white/10 p-2">
+                      {jobs.map((j) => (
+                        <div key={j.id} className="flex items-center justify-between text-xs">
+                          <span className="text-ash">
+                            {j.type === "scene_video" ? "Video" : j.type === "voiceover" ? "Voiceover" : "Music"}
+                          </span>
+                          <span
+                            className={
+                              j.status === "SUCCEEDED"
+                                ? "text-emerald-300"
+                                : j.status === "FAILED"
+                                  ? "text-ember"
+                                  : "text-signal"
+                            }
+                            title={j.error ?? undefined}
+                          >
+                            {j.status === "SUCCEEDED"
+                              ? "Done"
+                              : j.status === "FAILED"
+                                ? "Failed"
+                                : j.status === "RUNNING"
+                                  ? "Generating…"
+                                  : "Queued"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </>

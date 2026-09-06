@@ -8,30 +8,30 @@
 // expects structured JSON back from an LLM call should go through this
 // instead.
 export function parseJsonResponse<T>(text: string): T {
-    let cleaned = text.trim();
-  
-    const fenceMatch = cleaned.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-    if (fenceMatch) {
-      cleaned = fenceMatch[1].trim();
-    }
-  
-    try {
-      return JSON.parse(cleaned) as T;
-    } catch {
-      // Fall back to slicing between the first { or [ and the last matching
-      // } or ] — covers a stray fence on only one side, or a short preamble
-      // like "Here's the JSON:" the model added despite instructions not to.
-      const start = cleaned.search(/[{[]/);
-      const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
-      if (start !== -1 && end > start) {
-        try {
-          return JSON.parse(cleaned.slice(start, end + 1)) as T;
-        } catch {
-          // fall through to the error below with full context
-        }
-      }
-      throw new Error(
-        `Model returned invalid JSON even after fence-stripping. First 200 chars: ${cleaned.slice(0, 200)}`
-      );
-    }
+  let cleaned = text.trim();
+
+  const fenceMatch = cleaned.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  if (fenceMatch) {
+    cleaned = fenceMatch[1].trim();
   }
+
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch {
+    // Fall back to slicing between the first { or [ and the last matching
+    // } or ] — covers a stray fence on only one side, or a short preamble
+    // like "Here's the JSON:" the model added despite instructions not to.
+    const start = cleaned.search(/[{[]/);
+    const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+    if (start !== -1 && end > start) {
+      try {
+        return JSON.parse(cleaned.slice(start, end + 1)) as T;
+      } catch {
+        // fall through to the error below with full context
+      }
+    }
+    throw new Error(
+      `Model returned invalid JSON even after fence-stripping. First 200 chars: ${cleaned.slice(0, 200)}`
+    );
+  }
+}
