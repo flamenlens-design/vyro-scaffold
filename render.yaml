@@ -84,16 +84,5 @@ services:
     plan: starter
     ipAllowList: []
 
-<<<<<<< HEAD
 # No `databases:` block — Postgres lives on Neon, not Render. DATABASE_URL
 # is set as sync:false on both services above instead of fromDatabase.
-=======
-databases:
-  - name: vyro-db
-    # Render retired the "starter" Postgres plan name for new databases in
-    # Aug 2026 (blueprint deploys fail with databases[0].plan otherwise) —
-    # "basic-256mb" is the current equivalent tier. Deliberately not "free":
-    # that tier auto-deletes after 30 days, which is wrong for a database
-    # holding real project data.
-    plan: basic-256mb
->>>>>>> 40ce5fb9869ff7716875c2bd35e5dd2627e7f643
