@@ -1,4 +1,5 @@
 import { getTextProvider } from "../providers";
+import { parseJsonResponse } from "../json-parse";
 
 export interface ScriptBriefContext {
   purpose?: string | null;
@@ -52,7 +53,7 @@ export async function generateScript(
     temperature: 0.8,
   });
 
-  return JSON.parse(result.text) as GeneratedScript;
+  return parseJsonResponse<GeneratedScript>(result.text);
 }
 
 export type ScriptTransform =
@@ -131,5 +132,5 @@ export async function detectStructure(script: string, durationSec: number): Prom
     temperature: 0.3,
   });
 
-  return JSON.parse(result.text) as ScriptStructure;
+  return parseJsonResponse<ScriptStructure>(result.text);
 }

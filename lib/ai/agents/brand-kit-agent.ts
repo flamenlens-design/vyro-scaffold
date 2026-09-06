@@ -33,6 +33,7 @@
 //    that later.
 
 import { getTextProvider } from "../providers";
+import { parseJsonResponse } from "../json-parse";
 
 const MAX_PAGES = 3; // homepage + up to 2 linked pages
 const FETCH_TIMEOUT_MS = 10_000;
@@ -396,7 +397,7 @@ function safeParseSynthesis(text: string): SynthesisResult {
   };
 
   try {
-    const parsed = JSON.parse(text) as Partial<SynthesisResult>;
+    const parsed = parseJsonResponse<Partial<SynthesisResult>>(text);
     return {
       name: typeof parsed.name === "string" ? parsed.name : fallback.name,
       colors: Array.isArray(parsed.colors) ? parsed.colors.filter((c) => typeof c === "string") : [],

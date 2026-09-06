@@ -1,4 +1,5 @@
 import { getTextProvider } from "../providers";
+import { parseJsonResponse } from "../json-parse";
 
 // Storyboard Agent
 //
@@ -176,7 +177,7 @@ export async function generateStoryboard(
 
   let parsed: RawStoryboardResponse;
   try {
-    parsed = JSON.parse(result.text) as RawStoryboardResponse;
+    parsed = parseJsonResponse<RawStoryboardResponse>(result.text);
   } catch {
     throw new Error("Storyboard agent returned invalid JSON");
   }
