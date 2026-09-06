@@ -90,4 +90,9 @@ services:
 
 databases:
   - name: vyro-db
-    plan: starter
+    # Render retired the "starter" Postgres plan name for new databases in
+    # Aug 2026 (blueprint deploys fail with databases[0].plan otherwise) —
+    # "basic-256mb" is the current equivalent tier. Deliberately not "free":
+    # that tier auto-deletes after 30 days, which is wrong for a database
+    # holding real project data.
+    plan: basic-256mb
