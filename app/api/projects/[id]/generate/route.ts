@@ -4,15 +4,18 @@ import { prisma } from "@/lib/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { enqueueGenerationJob } from "@/lib/queue/enqueue";
 import { errorMessage, errorStatus } from "@/lib/utils/errors";
+import { DEFAULT_VIDEO_MODEL } from "@/lib/ai/providers/fal-video";
 
 // The one piece that was still missing after the storyboard/brand-kit/
 // timeline UI work: scenes existed, the queue/worker existed, real
 // providers existed — nothing actually called enqueueGenerationJob(). This
-// route is that call site. Model choice below follows the cost analysis
-// from earlier in this project: Seedance 2.0 for video (best cost/quality
-// per the Artificial Analysis leaderboard at the time) rather than the
-// video provider's own default (Kling 2.1 Standard) or a premium tier.
-const VIDEO_MODEL = "seedance-2.0";
+// route is that call site. Model choice follows the cost analysis from
+// earlier in this project (Seedance 2.0 — best cost/quality per the
+// Artificial Analysis leaderboard at the time). Imported from fal-video.ts
+// rather than hardcoded here so there's one source of truth for "the"
+// default video model — a bare getVideoProvider().generate() call with no
+// model specified now resolves to the same thing this route enqueues.
+const VIDEO_MODEL = DEFAULT_VIDEO_MODEL;
 
 // Placeholder default until a real voice-picker UI exists — ElevenLabs'
 // public "Rachel" voice, a commonly-used, always-available default.
