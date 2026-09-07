@@ -69,6 +69,23 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
   const sceneVideoUrls = project.scenes
     .map((scene) => scene.generatedVideos[0]?.url)
     .filter((url): url is string => Boolean(url));
+<<<<<<< HEAD
+  // Pass every successfully generated scene clip to the browser preview.
+  // The preview can stitch these clips together client-side without waiting
+  // for the server-side FFmpeg export job.
+  const sceneVideoUrls = project.scenes
+    .map((scene) => scene.generatedVideos[0]?.url)
+    .filter((url): url is string => Boolean(url));
+=======
+  const previewClips = (tracks.find((t) => t.type === "VIDEO")?.items ?? []).filter((item) => item.thumbUrl);
+  const firstReadyVideoUrl = previewClips[0]?.thumbUrl;
+>>>>>>> b892aa93163778125decc564f39ecbd9a2ef57f1
+  // Pass every successfully generated scene clip to the browser preview.
+  // The preview can stitch these clips together client-side without waiting
+  // for the server-side FFmpeg export job.
+  const sceneVideoUrls = project.scenes
+    .map((scene) => scene.generatedVideos[0]?.url)
+    .filter((url): url is string => Boolean(url));
 
   return (
     <div className="flex h-screen flex-col bg-void text-bone">
@@ -104,6 +121,7 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
         {/* Center: preview + timeline */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-obsidian/40">
+            <FullVideoPreview projectId={project.id} sceneUrls={sceneVideoUrls} />
             <FullVideoPreview projectId={project.id} sceneUrls={sceneVideoUrls} />
           </div>
           <div className="h-72 shrink-0 border-t border-white/10 bg-obsidian/60 p-3">
