@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pause, Play, Minus, Plus } from "lucide-react";
+import { dispatchPlayback, PLAYBACK_TIME_EVENT, type PlaybackTimeDetail } from "./playback-events";
 import {
   type EditorTrack,
   type TimelineItem,
@@ -70,8 +71,6 @@ export default function TimelineEditor({ projectId, initialTracks, isMock }: Tim
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const rulerRef = useRef<HTMLDivElement | null>(null);
   const dragCtxRef = useRef<DragContext | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const lastTsRef = useRef<number | null>(null);
 
   const duration = useMemo(() => Math.max(timelineDuration(tracks), 1), [tracks]);
   const LABEL_WIDTH = 96;
@@ -89,31 +88,16 @@ export default function TimelineEditor({ projectId, initialTracks, isMock }: Tim
   // so nothing ever displays or scrubs past the end of the timeline.
   const displayTime = Math.min(currentTime, duration);
 
-  // Playback loop.
+  // The preview owns real video playback. The timeline is only the controller/playhead.
   useEffect(() => {
-    if (!isPlaying) {
-      lastTsRef.current = null;
-      return;
+    function onPlaybackTime(event: Event) {
+      const detail = (event as CustomEvent<PlaybackTimeDetail>).detail;
+      setCurrentTime(detail.time);
+      setIsPlaying(detail.playing);
     }
-    function tick(ts: number) {
-      if (lastTsRef.current == null) lastTsRef.current = ts;
-      const dt = (ts - lastTsRef.current) / 1000;
-      lastTsRef.current = ts;
-      setCurrentTime((prev) => {
-        const next = prev + dt;
-        if (next >= duration) {
-          setIsPlaying(false);
-          return duration;
-        }
-        return next;
-      });
-      rafRef.current = requestAnimationFrame(tick);
-    }
-    rafRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-    };
-  }, [isPlaying, duration]);
+    window.addEventListener(PLAYBACK_TIME_EVENT, onPlaybackTime);
+    return () => window.removeEventListener(PLAYBACK_TIME_EVENT, onPlaybackTime);
+  }, []);
 
   function scrubTo(clientX: number) {
     const rect = rulerRef.current?.getBoundingClientRect();
@@ -122,11 +106,13 @@ export default function TimelineEditor({ projectId, initialTracks, isMock }: Tim
     const x = clientX - rect.left + scrollLeft - LABEL_WIDTH;
     const t = clamp(x / pxPerSecond, 0, duration);
     setCurrentTime(t);
+    dispatchPlayback({ type: "seek", time: t });
   }
 
   function handleRulerPointerDown(e: React.PointerEvent) {
     e.preventDefault();
     setIsPlaying(false);
+    dispatchPlayback({ type: "pause" });
     scrubTo(e.clientX);
     function onMove(ev: PointerEvent) {
       scrubTo(ev.clientX);
@@ -271,7 +257,11 @@ export default function TimelineEditor({ projectId, initialTracks, isMock }: Tim
       <div className="flex shrink-0 items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setIsPlaying((p) => !p)}
+            onClick={() => {
+              const next = !isPlaying;
+              setIsPlaying(next);
+              dispatchPlayback({ type: next ? "play" : "pause" });
+            }}
             className="flex h-7 w-7 items-center justify-center rounded-full bg-signal text-white hover:brightness-110"
             title={isPlaying ? "Pause" : "Play"}
           >
