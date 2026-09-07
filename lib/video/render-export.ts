@@ -1,4 +1,5 @@
-// Stitches every scene's generated clip into one continuous MP4.
+// Stitches every scene's generated clip into one continuous MP4, and mixes
+// in the Voiceover + Music tracks on top.
 //
 // Why this exists: each scene only ever gets its own short clip from the
 // video provider (fal.ai/Kling/Seedance/Wan — typically ~4s, whatever
@@ -6,16 +7,22 @@
 // the studio's center preview (app/project/[id]/page.tsx) just played
 // `project.scenes[0]`'s clip, and there was no download affordance for
 // anything beyond that single <video> element. This module is the piece
-// that turns "N separate short clips" into "one video", using ffmpeg
-// (already installed in the Docker image — see the Dockerfile's runner
-// stage comment) so it costs nothing beyond compute already being paid
-// for, no new paid API involved.
+// that turns "N separate short clips + a voiceover track + a music track"
+// into one video, using ffmpeg (already installed in the Docker image —
+// see the Dockerfile's runner stage comment) so it costs nothing beyond
+// compute already being paid for, no new paid API involved.
 //
-// Source of truth for clip order/trim: the saved Timeline's VIDEO track
+// Source of truth for clip order/trim/timing: the saved Timeline's tracks
 // (TimelineEditor's handleSave) when one exists, since that reflects
 // whatever the user actually arranged/trimmed in the editor. Falls back to
-// scene order with no trim when the user hasn't saved a timeline yet —
-// mirrors buildAssetTracks' fallback in timeline-utils.ts.
+// scene order (video) / the most recent generated asset (voiceover, music)
+// when the user hasn't saved a timeline yet — mirrors buildAssetTracks'
+// fallback in timeline-utils.ts.
+//
+// Audio: every scene clip's own audio (if the video model generated any —
+// dialogue, ambient, lip-synced sound) is kept, not muted. The Voiceover
+// and Music tracks are layered on top at their real timeline positions,
+// with Music ducked so narration and dialogue stay intelligible.
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -34,6 +41,13 @@ interface ExportClip {
   sourceUrl: string;
   trimIn: number;
   durationSec: number;
+}
+
+interface AudioLayerPlan {
+  kind: "voiceover" | "music";
+  sourceUrl: string;
+  startSec: number;
+  trimIn: number;
 }
 
 interface ExportResult {
@@ -59,12 +73,21 @@ function targetResolution(aspectRatio: string | null): { w: number; h: number } 
   }
 }
 
-async function loadExportPlan(projectId: string): Promise<{ clips: ExportClip[]; aspectRatio: string | null }> {
+function itemsFromTrack(track: { items: unknown } | undefined): TimelineItem[] {
+  if (!track) return [];
+  const raw = track.items as unknown[];
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  return coerceTrackItems(track.items);
+}
+
+async function loadExportPlan(
+  projectId: string
+): Promise<{ clips: ExportClip[]; audioLayers: AudioLayerPlan[]; aspectRatio: string | null }> {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     select: {
       aspectRatio: true,
-      timeline: { include: { tracks: { where: { type: "VIDEO" } } } },
+      timeline: { include: { tracks: true } },
       scenes: {
         orderBy: { order: "asc" },
         select: {
@@ -73,19 +96,23 @@ async function loadExportPlan(projectId: string): Promise<{ clips: ExportClip[];
           generatedVideos: { where: { status: "SUCCEEDED" }, orderBy: { createdAt: "desc" }, take: 1 },
         },
       },
+      assets: {
+        where: { type: { in: ["VOICEOVER", "MUSIC"] } },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, url: true, type: true },
+      },
     },
   });
   if (!project) throw new Error("Project not found");
 
+  // ---- Video track ----
   const sceneUrlById = new Map(project.scenes.map((s) => [s.id, s.generatedVideos[0]?.url ?? null]));
-  const savedVideoTrack = project.timeline?.tracks[0];
+  const savedVideoTrack = project.timeline?.tracks.find((t) => t.type === "VIDEO");
 
-  let items: TimelineItem[];
-  if (savedVideoTrack && savedVideoTrack.items && (savedVideoTrack.items as unknown[]).length > 0) {
-    items = coerceTrackItems(savedVideoTrack.items);
-  } else {
+  let videoItems: TimelineItem[] = itemsFromTrack(savedVideoTrack);
+  if (videoItems.length === 0) {
     // No saved timeline yet — fall back to raw scene order, full clip, no trim.
-    items = project.scenes.map((s, i) => ({
+    videoItems = project.scenes.map((s, i) => ({
       id: `scene-${s.id}`,
       sceneId: s.id,
       label: `Scene ${i + 1}`,
@@ -99,8 +126,8 @@ async function loadExportPlan(projectId: string): Promise<{ clips: ExportClip[];
 
   const missing: string[] = [];
   const clips: ExportClip[] = [];
-  for (const item of items) {
-    if (!item.sceneId) continue; // ignore non-scene rows (asset-backed items aren't part of the export MVP)
+  for (const item of videoItems) {
+    if (!item.sceneId) continue; // ignore non-scene rows
     const url = sceneUrlById.get(item.sceneId);
     if (!url) {
       missing.push(item.label);
@@ -120,7 +147,28 @@ async function loadExportPlan(projectId: string): Promise<{ clips: ExportClip[];
     throw new Error("Nothing to export — generate at least one scene's video first.");
   }
 
-  return { clips, aspectRatio: project.aspectRatio };
+  // ---- Voiceover / Music tracks ----
+  const assetById = new Map(project.assets.map((a) => [a.id, a]));
+  const audioLayers: AudioLayerPlan[] = [];
+
+  function collectTrackLayer(type: "VOICEOVER" | "MUSIC", kind: "voiceover" | "music") {
+    const track = project!.timeline?.tracks.find((t) => t.type === type);
+    const items = itemsFromTrack(track).filter((i) => i.assetId && assetById.has(i.assetId));
+    if (items.length > 0) {
+      for (const item of items) {
+        audioLayers.push({ kind, sourceUrl: assetById.get(item.assetId!)!.url, startSec: item.start, trimIn: item.trimIn });
+      }
+      return;
+    }
+    // No saved timeline placement for this track — fall back to the most
+    // recently generated asset of this type, played from the start.
+    const latest = project!.assets.find((a) => a.type === type);
+    if (latest) audioLayers.push({ kind, sourceUrl: latest.url, startSec: 0, trimIn: 0 });
+  }
+  collectTrackLayer("VOICEOVER", "voiceover");
+  collectTrackLayer("MUSIC", "music");
+
+  return { clips, audioLayers, aspectRatio: project.aspectRatio };
 }
 
 async function downloadTo(url: string, destPath: string): Promise<void> {
@@ -147,9 +195,59 @@ async function hasAudioStream(path: string): Promise<boolean> {
   return stdout.trim().length > 0;
 }
 
+async function probeDuration(path: string): Promise<number> {
+  const { stdout } = await execFileAsync("ffprobe", [
+    "-v", "error",
+    "-show_entries", "format=duration",
+    "-of", "default=noprint_wrappers=1:nokey=1",
+    path,
+  ]);
+  const d = parseFloat(stdout.trim());
+  return Number.isFinite(d) ? d : 0;
+}
+
+/**
+ * Downloads + trims a voiceover/music source and shifts it to its real
+ * position on the timeline (silence-padded) so it lines up with the
+ * concatenated video when mixed in later. Returns null if there's nothing
+ * usable left after trimming (e.g. the layer starts past the end of the
+ * video, or the source is empty).
+ */
+async function buildAudioLayer(
+  workDir: string,
+  index: number,
+  layer: AudioLayerPlan,
+  totalDurationSec: number
+): Promise<string | null> {
+  if (layer.startSec >= totalDurationSec) return null;
+
+  const rawPath = join(workDir, `audio_raw_${index}`);
+  await downloadTo(layer.sourceUrl, rawPath);
+  const probed = await probeDuration(rawPath);
+  const available = Math.max(0, probed - layer.trimIn);
+  const duration = Math.min(available, totalDurationSec - layer.startSec);
+  if (duration <= 0.05) return null;
+
+  const outPath = join(workDir, `audio_layer_${index}.wav`);
+  const delayMs = Math.round(layer.startSec * 1000);
+  // Music sits under narration/dialogue rather than competing with it —
+  // voiceover and each clip's own audio are left at full volume.
+  const volumeFilter = layer.kind === "music" ? ",volume=0.3" : "";
+
+  await execFileAsync("ffmpeg", [
+    "-y",
+    "-ss", String(layer.trimIn), "-i", rawPath,
+    "-t", String(duration),
+    "-af", `aformat=channel_layouts=stereo,adelay=${delayMs}|${delayMs}${volumeFilter}`,
+    "-ar", "48000", "-ac", "2",
+    outPath,
+  ]);
+  return outPath;
+}
+
 /** Renders the full project video and returns its public URL + duration. */
 export async function renderProjectExport(projectId: string): Promise<ExportResult> {
-  const { clips, aspectRatio } = await loadExportPlan(projectId);
+  const { clips, audioLayers, aspectRatio } = await loadExportPlan(projectId);
   const { w, h } = targetResolution(aspectRatio);
 
   const workDir = await mkdtemp(join(tmpdir(), "vyro-export-"));
@@ -169,6 +267,8 @@ export async function renderProjectExport(projectId: string): Promise<ExportResu
       // stream-copy instead of re-encoding twice. Clips with no audio get
       // an explicit silent track muxed in (see hasAudioStream above) so
       // every normalized clip has the same stream layout going into concat.
+      // Each clip's own audio (dialogue/ambient) is kept as-is here — it's
+      // the base layer that voiceover/music get mixed on top of below.
       const args = withAudio
         ? [
             "-y",
@@ -205,19 +305,48 @@ export async function renderProjectExport(projectId: string): Promise<ExportResu
       normalizedPaths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n")
     );
 
-    const outputPath = join(workDir, "output.mp4");
+    const concatenatedPath = join(workDir, "concatenated.mp4");
     await execFileAsync("ffmpeg", [
       "-y",
       "-f", "concat",
       "-safe", "0",
       "-i", concatListPath,
       "-c", "copy",
-      outputPath,
+      concatenatedPath,
     ]);
 
-    const key = `exports/${projectId}/${randomUUID()}.mp4`;
-    const url = await uploadFileToS3(key, outputPath, "video/mp4");
     const durationSec = clips.reduce((sum, c) => sum + c.durationSec, 0);
+
+    // ---- Layer in voiceover + music at their real timeline positions ----
+    const layerPaths: string[] = [];
+    for (let i = 0; i < audioLayers.length; i++) {
+      const built = await buildAudioLayer(workDir, i, audioLayers[i], durationSec);
+      if (built) layerPaths.push(built);
+    }
+
+    let finalPath = concatenatedPath;
+    if (layerPaths.length > 0) {
+      finalPath = join(workDir, "final.mp4");
+      const inputArgs: string[] = ["-i", concatenatedPath];
+      layerPaths.forEach((p) => inputArgs.push("-i", p));
+      const audioRefs = ["[0:a]", ...layerPaths.map((_, i) => `[${i + 1}:a]`)].join("");
+      // duration=first pins the mixed-down output to the concatenated
+      // video's own audio length, so voiceover/music never extend the
+      // final video even if their source files run longer.
+      const filter = `${audioRefs}amix=inputs=${layerPaths.length + 1}:duration=first:dropout_transition=0[aout]`;
+      await execFileAsync("ffmpeg", [
+        "-y",
+        ...inputArgs,
+        "-filter_complex", filter,
+        "-map", "0:v:0", "-map", "[aout]",
+        "-c:v", "copy",
+        "-c:a", "aac", "-b:a", "192k",
+        finalPath,
+      ]);
+    }
+
+    const key = `exports/${projectId}/${randomUUID()}.mp4`;
+    const url = await uploadFileToS3(key, finalPath, "video/mp4");
 
     return { url, durationSec, clipCount: clips.length };
   } finally {
