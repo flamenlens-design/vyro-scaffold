@@ -55,6 +55,18 @@ export default function TimelineEditor({ projectId, initialTracks, isMock }: Tim
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // page.tsx re-fetches project data (and rebuilds initialTracks) after a
+  // generation batch finishes — see creative-studio-panel.tsx's
+  // router.refresh() call. Without this effect, that new data would never
+  // reach the editor: useState(initialTracks) only reads the prop on first
+  // mount, so newly-generated clips wouldn't appear until a hard page
+  // reload. Skipped while the user has unsaved local edits so a background
+  // refresh can't clobber in-progress trimming/reordering.
+  useEffect(() => {
+    if (!isDirty) setTracks(initialTracks);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTracks]);
+
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const rulerRef = useRef<HTMLDivElement | null>(null);
   const dragCtxRef = useRef<DragContext | null>(null);
@@ -375,6 +387,12 @@ export default function TimelineEditor({ projectId, initialTracks, isMock }: Tim
                           className="absolute left-0 top-0 h-full w-1.5 cursor-ew-resize rounded-l-md bg-white/10 opacity-0 group-hover:opacity-100 hover:bg-white/40"
                         />
                         <span className="truncate select-none">{item.label}</span>
+                        {item.thumbUrl && (
+                          <span
+                            title="Generated — ready"
+                            className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400"
+                          />
+                        )}
                         <div
                           onPointerDown={(e) => handleTrimPointerDown(e, track, item, "trim-right")}
                           className="absolute right-0 top-0 h-full w-1.5 cursor-ew-resize rounded-r-md bg-white/10 opacity-0 group-hover:opacity-100 hover:bg-white/40"

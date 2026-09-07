@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Globe } from "lucide-react";
 
 // Local shape, not the generated Prisma `BrandKit` type — same reasoning as
 // creative-studio-panel.tsx's ScriptState.
@@ -56,14 +57,23 @@ export default function BrandToolButton({
 
   return (
     <>
+      {/* Unlike the other left-rail entries (still layout placeholders with
+          no onClick — see page.tsx), this one is a real, working feature:
+          paste a URL, colors/fonts/voice get extracted automatically. It
+          needs to visually read as "live" rather than blend in with the
+          inert icons around it, so it gets a permanent accent border/icon
+          instead of only lighting up once a kit exists. */}
       <button
-        title="Brand"
+        title="Brand — paste a website URL to auto-extract colors, fonts & voice"
         onClick={() => setOpen(true)}
-        className={`flex h-10 w-10 items-center justify-center rounded-lg text-[10px] transition ${
-          brandKit ? "bg-signal/10 text-signal" : "text-ash hover:bg-white/5 hover:text-bone"
+        className={`flex h-10 w-10 flex-col items-center justify-center gap-0.5 rounded-lg border transition ${
+          brandKit
+            ? "border-signal/40 bg-signal/10 text-signal"
+            : "border-signal/30 text-signal/80 hover:border-signal/60 hover:bg-signal/10 hover:text-signal"
         }`}
       >
-        Br
+        <Globe className="h-4 w-4" />
+        <span className="text-[8px] leading-none">Brand</span>
       </button>
 
       {open && (

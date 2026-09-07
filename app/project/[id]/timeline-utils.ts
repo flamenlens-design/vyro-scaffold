@@ -139,10 +139,95 @@ interface MockAssetSeed {
   url: string;
 }
 
+interface SceneWithVideo {
+  id: string;
+  order: number;
+  durationSec: number;
+  visualDesc: string;
+  generatedVideos: { url: string | null }[]; // pass pre-filtered to SUCCEEDED, take: 1
+}
+
 /**
- * Builds placeholder tracks when a project has no Timeline row yet (or an
- * empty one). Uses real Asset rows if any exist so the mock still reflects
- * generated media once it shows up; otherwise falls back to static labels.
+ * Builds the video track from real per-scene generation state — this is the
+ * piece that was missing even after the worker started actually persisting
+ * results: the worker writes to GeneratedVideo (keyed by sceneId), but
+ * nothing ever read that table for display. buildMockTracks below only ever
+ * looked at the project-level Asset list (VIDEO/IMAGE type), which no scene
+ * video ever lands in — so generated clips were invisible in the timeline
+ * regardless of how many succeeded. A scene without a succeeded video yet
+ * still gets a placeholder block (so the track shows the full intended
+ * shape of the video), it just has no thumbUrl/assetId.
+ */
+function buildVideoTrackFromScenes(scenes: SceneWithVideo[]): TimelineItem[] {
+  const items: TimelineItem[] = scenes.map((scene, i) => {
+    const video = scene.generatedVideos[0];
+    return {
+      id: `scene-video-${scene.id}`,
+      sceneId: scene.id,
+      label: video?.url ? `Scene ${scene.order + 1}` : `Scene ${scene.order + 1} — pending`,
+      thumbUrl: video?.url ?? undefined,
+      start: 0,
+      end: 0,
+      trimIn: 0,
+      trimOut: 0,
+      sourceDuration: Math.max(MIN_CLIP_SECONDS, scene.durationSec || 3.5),
+    };
+  });
+  return repackTrack(items);
+}
+
+/**
+ * Real tracks built from actual project state (scenes' generated videos +
+ * project-level voiceover/music assets) — used whenever a project has
+ * scenes, regardless of whether every scene has finished generating yet.
+ * Distinct from buildMockTracks (below), which is the true empty-project
+ * placeholder shown before any storyboard exists at all.
+ */
+export function buildAssetTracks(scenes: SceneWithVideo[], assets: MockAssetSeed[]): EditorTrack[] {
+  const voiceAssets = assets.filter((a) => a.type === "VOICEOVER");
+  const musicAssets = assets.filter((a) => a.type === "MUSIC");
+
+  const voiceItems: TimelineItem[] = [
+    {
+      id: "voiceover-0",
+      assetId: voiceAssets[0]?.id,
+      label: voiceAssets[0]?.name ?? "Voiceover — not generated yet",
+      thumbUrl: voiceAssets[0]?.url,
+      start: 0,
+      end: 0,
+      trimIn: 0,
+      trimOut: 0,
+      sourceDuration: 12.5,
+    },
+  ];
+
+  const musicItems: TimelineItem[] = [
+    {
+      id: "music-0",
+      assetId: musicAssets[0]?.id,
+      label: musicAssets[0]?.name ?? "Background music — not generated yet",
+      thumbUrl: musicAssets[0]?.url,
+      start: 0,
+      end: 0,
+      trimIn: 0,
+      trimOut: 0,
+      sourceDuration: 14,
+    },
+  ];
+
+  return [
+    { id: "video-track", type: "VIDEO", order: 0, items: buildVideoTrackFromScenes(scenes) },
+    { id: "voiceover-track", type: "VOICEOVER", order: 1, items: repackTrack(voiceItems) },
+    { id: "music-track", type: "MUSIC", order: 2, items: repackTrack(musicItems) },
+  ];
+}
+
+/**
+ * Builds placeholder tracks when a project has no scenes yet at all (before
+ * a storyboard has ever been generated) — the true empty-state mock, not to
+ * be confused with buildAssetTracks above, which handles the (far more
+ * common) case of scenes existing with generation in progress or partially
+ * done.
  */
 export function buildMockTracks(assets: MockAssetSeed[]): EditorTrack[] {
   const videoAssets = assets.filter((a) => a.type === "VIDEO" || a.type === "IMAGE");

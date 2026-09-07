@@ -47,7 +47,11 @@ export const FAL_VIDEO_MODELS: Record<string, VideoModelConfig> = {
   },
 };
 
-export const DEFAULT_VIDEO_MODEL = "kling-2.1-standard";
+// Seedance 2.0 is the app-wide default (best cost/quality per the
+// Artificial Analysis leaderboard at the time — see the comment on
+// app/api/projects/[id]/generate/route.ts's VIDEO_MODEL, which imports this
+// constant rather than hardcoding its own so the two can never drift).
+export const DEFAULT_VIDEO_MODEL = "seedance-2.0";
 
 interface FalVideoOutput {
   video: { url: string; duration?: number };
@@ -81,10 +85,27 @@ function resolveEndpoint(modelKey: string, hasReferenceImage: boolean): string {
   );
 }
 
-function buildInput(req: VideoGenerationRequest): Record<string, unknown> {
+// Seedance 2.0 (both tiers) rejects any duration that isn't exactly one of
+// these literal string values — an arbitrary float/int like "3" or "6.5"
+// gets a 422 from fal.ai before generation even starts (still billable per
+// fal's request-validation policy in some cases, so this isn't just a
+// correctness nice-to-have). Scene durations come from the script/storyboard
+// step and are never constrained to this set, so every scene needs snapping
+// at the point where we actually talk to this specific model.
+const SEEDANCE_ALLOWED_DURATIONS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+
+function snapToSeedanceDuration(durationSec: number): string {
+  const closest = SEEDANCE_ALLOWED_DURATIONS.reduce((best, candidate) =>
+    Math.abs(candidate - durationSec) < Math.abs(best - durationSec) ? candidate : best
+  );
+  return String(closest);
+}
+
+function buildInput(req: VideoGenerationRequest, endpoint: string): Record<string, unknown> {
+  const isSeedance = endpoint.startsWith("bytedance/seedance-2.0");
   const input: Record<string, unknown> = {
     prompt: req.prompt,
-    duration: String(req.durationSec),
+    duration: isSeedance ? snapToSeedanceDuration(req.durationSec) : String(req.durationSec),
   };
 
   if (req.referenceImageUrl) input.image_url = req.referenceImageUrl;
@@ -98,7 +119,7 @@ export class FalVideoProvider implements VideoProvider {
     const modelKey = req.model || DEFAULT_VIDEO_MODEL;
     const endpoint = resolveEndpoint(modelKey, Boolean(req.referenceImageUrl));
 
-    const { data } = await runFalModel<FalVideoOutput>(endpoint, buildInput(req), {
+    const { data } = await runFalModel<FalVideoOutput>(endpoint, buildInput(req, endpoint), {
       timeoutMs: 10 * 60 * 1000, // video jobs run longer than image jobs
     });
 

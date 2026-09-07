@@ -18,7 +18,12 @@ import type {
 } from "../types";
 
 const PLACEHOLDER_IMG = "https://placehold.co/1024x1024/0a0a0f/e5e5e5?text=VYRO+Preview";
-const PLACEHOLDER_VIDEO = "https://placehold.co/1080x1920/0a0a0f/e5e5e5?text=Generating…";
+// A real, tiny, CC0-licensed sample clip (MDN's public dev-testing assets) —
+// not another placehold.co image URL like before. That mattered once the
+// timeline/preview actually got wired to play `url` in a real <video>
+// element: an image URL there just shows a broken-video icon, which would
+// have made mock-mode testing of the player itself impossible.
+const PLACEHOLDER_VIDEO = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
 const PLACEHOLDER_AUDIO = "data:audio/mp3;base64,"; // empty stub
 
 export class MockImageProvider implements ImageProvider {

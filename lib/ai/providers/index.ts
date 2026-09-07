@@ -24,6 +24,17 @@ import type {
   TextProvider, ImageProvider, VideoProvider, TTSProvider, STTProvider, MusicProvider,
 } from "../types";
 
+// Testing/staging escape hatch. Without this, the only thing that decides
+// real-vs-mock is "is an API key present" — but a deployed environment
+// needs real keys to ever work in production, which meant there was no way
+// to safely test the generation pipeline (queue, worker, timeline sync,
+// the UI itself) without every click billing fal.ai/ElevenLabs for real.
+// Set this to "true" on whichever Render service you're using for
+// testing, unset (or "false") for the real production deploy. Deliberately
+// does NOT cover text (OpenRouter) — LLM script/storyboard generation costs
+// cents, not dollars, so it isn't the runaway-bill risk video/TTS are.
+const FORCE_MOCK_PROVIDERS = process.env.VYRO_FORCE_MOCK_PROVIDERS === "true";
+
 let textProvider: TextProvider | null = null;
 
 export function getTextProvider(): TextProvider {
@@ -38,7 +49,8 @@ let imageProvider: ImageProvider | null = null;
 
 export function getImageProvider(): ImageProvider {
   if (!imageProvider) {
-    imageProvider = isFalConfigured() ? new FalImageProvider() : new MockImageProvider();
+    imageProvider =
+      !FORCE_MOCK_PROVIDERS && isFalConfigured() ? new FalImageProvider() : new MockImageProvider();
   }
   return imageProvider;
 }
@@ -50,7 +62,8 @@ let videoProvider: VideoProvider | null = null;
 
 export function getVideoProvider(): VideoProvider {
   if (!videoProvider) {
-    videoProvider = isFalConfigured() ? new FalVideoProvider() : new MockVideoProvider();
+    videoProvider =
+      !FORCE_MOCK_PROVIDERS && isFalConfigured() ? new FalVideoProvider() : new MockVideoProvider();
   }
   return videoProvider;
 }
@@ -64,7 +77,7 @@ let ttsProvider: TTSProvider | null = null;
 export function getTTSProvider(): TTSProvider {
   if (ttsProvider) return ttsProvider;
 
-  if (process.env.ELEVENLABS_API_KEY) {
+  if (!FORCE_MOCK_PROVIDERS && process.env.ELEVENLABS_API_KEY) {
     const configuredModel = process.env.VYRO_TTS_MODEL;
     const model: ElevenLabsModel | undefined =
       configuredModel === "eleven_multilingual_v2" || configuredModel === "eleven_flash_v2_5"
@@ -87,7 +100,7 @@ let sttProvider: STTProvider | null = null;
 export function getSTTProvider(): STTProvider {
   if (sttProvider) return sttProvider;
 
-  if (process.env.GROQ_API_KEY) {
+  if (!FORCE_MOCK_PROVIDERS && process.env.GROQ_API_KEY) {
     const configuredModel = process.env.VYRO_STT_MODEL;
     const model: GroqWhisperModel | undefined =
       configuredModel === "whisper-large-v3" || configuredModel === "whisper-large-v3-turbo"
