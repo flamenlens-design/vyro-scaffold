@@ -102,7 +102,7 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
         {/* Center: preview + timeline */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-obsidian/40">
-            <FullVideoPreview projectId={project.id} sceneUrl={firstReadyVideoUrl} />
+            <FullVideoPreview projectId={project.id} sceneUrl={firstReadyVideoUrl ?? undefined} />
           </div>
           <div className="h-72 shrink-0 border-t border-white/10 bg-obsidian/60 p-3">
             <TimelineEditor projectId={project.id} initialTracks={tracks} isMock={isMock} />
