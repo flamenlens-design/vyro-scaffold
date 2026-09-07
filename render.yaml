@@ -43,6 +43,8 @@ services:
         sync: false
       - key: S3_SECRET_ACCESS_KEY
         sync: false
+      - key: S3_PUBLIC_URL_BASE
+        sync: false
       # Defaults to real mock testing (see .env.example) so this deploy can't
       # accidentally bill fal.ai/ElevenLabs while you're still testing.
       # Change to "false" once you're ready to actually generate for real.
@@ -82,6 +84,8 @@ services:
       - key: S3_ACCESS_KEY_ID
         sync: false
       - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_PUBLIC_URL_BASE
         sync: false
       # Must match vyro-web's value — the worker is what actually calls
       # getVideoProvider()/getTTSProvider(), so this is the one that really

@@ -41,11 +41,17 @@ export const MusicInput = z.object({
   durationSec: z.number().positive(),
 });
 
+// No input fields needed — the worker re-reads the project's saved
+// timeline/scenes fresh from Postgres via the job's `projectId`, same as
+// every other job type does for its own row. See lib/video/render-export.ts.
+export const VideoExportInput = z.object({});
+
 export const GENERATION_JOB_INPUT_SCHEMAS = {
   scene_image: SceneImageInput,
   scene_video: SceneVideoInput,
   voiceover: VoiceoverInput,
   music: MusicInput,
+  video_export: VideoExportInput,
 } as const;
 
 export type GenerationJobType = keyof typeof GENERATION_JOB_INPUT_SCHEMAS;

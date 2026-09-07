@@ -20,6 +20,7 @@ import {
 } from "@/lib/ai/providers";
 import { newConnection } from "./connection";
 import { GENERATION_QUEUE_NAME } from "./queue";
+import { renderProjectExport } from "@/lib/video/render-export";
 import {
   GENERATION_JOB_INPUT_SCHEMAS,
   isGenerationJobType,
@@ -105,6 +106,24 @@ async function runProvider(
               name: input.sceneId ? `Voiceover — scene ${input.sceneId}` : "Voiceover",
             },
           }).then(() => undefined),
+      };
+    }
+    case "video_export": {
+      GENERATION_JOB_INPUT_SCHEMAS.video_export.parse(rawInput);
+      const result = await renderProjectExport(projectId);
+      return {
+        output: { url: result.url, durationSec: result.durationSec, clipCount: result.clipCount },
+        summary: `Rendered full video export (${result.clipCount} clips, ${Math.round(result.durationSec)}s)`,
+        // Also lands as a normal Asset (name-tagged, since Asset has no
+        // "is this the full export" flag of its own) so it shows up
+        // wherever the rest of the project's assets do, not just via the
+        // job's output blob.
+        persist: (tx) =>
+          tx.asset
+            .create({
+              data: { projectId, type: "VIDEO", url: result.url, name: "Full video export" },
+            })
+            .then(() => undefined),
       };
     }
     case "music": {

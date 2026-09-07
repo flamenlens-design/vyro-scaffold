@@ -12,6 +12,8 @@ import TimelineEditor from "./timeline-editor";
 import { buildMockTracks, buildAssetTracks, coerceTrackItems, type EditorTrack } from "./timeline-utils";
 import CreativeStudioPanel from "./creative-studio-panel";
 import BrandToolButton from "./brand-tool-button";
+import ExportButton from "./export-button";
+import FullVideoPreview from "./full-video-preview";
 
 const LEFT_TOOLS = ["Assets", "Scenes", "Media", "Text", "Captions", "Brand", "Audio", "AI Tools"];
 
@@ -75,9 +77,7 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
           <button className="hover:text-bone">Undo</button>
           <button className="hover:text-bone">Redo</button>
           <span className="text-xs">Saved</span>
-          <button className="rounded-full bg-signal px-4 py-1.5 text-white hover:brightness-110">
-            Export
-          </button>
+          <ExportButton projectId={project.id} />
         </div>
       </header>
 
@@ -102,16 +102,7 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
         {/* Center: preview + timeline */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-obsidian/40">
-            {firstReadyVideoUrl ? (
-              <video
-                key={firstReadyVideoUrl}
-                src={firstReadyVideoUrl}
-                controls
-                className="aspect-[9/16] h-full max-h-full rounded-xl2 border border-white/10 bg-void object-cover"
-              />
-            ) : (
-              <div className="aspect-[9/16] h-[70%] rounded-xl2 border border-white/10 bg-void" />
-            )}
+            <FullVideoPreview projectId={project.id} sceneUrl={firstReadyVideoUrl} />
           </div>
           <div className="h-72 shrink-0 border-t border-white/10 bg-obsidian/60 p-3">
             <TimelineEditor projectId={project.id} initialTracks={tracks} isMock={isMock} />
