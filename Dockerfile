@@ -48,8 +48,25 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+
+# render.yaml's vyro-worker service runs `npm run worker` (tsx
+# lib/queue/run-worker.ts) against this exact image via dockerCommand —
+# but everything copied above only serves the standalone Next.js *web*
+# server. Without package.json (nowhere for `npm run worker` to find the
+# script), the lib/ source (never copied), and the full node_modules
+# (tsx/bullmq/ioredis and the OpenRouter/ElevenLabs/Groq/fal.ai clients are
+# all pruned from the standalone build since it only traces the web
+# server's own dependency graph), that command fails immediately with
+# "Cannot find module" or "missing script: worker". From the outside that
+# looks identical to jobs stuck at QUEUED forever — the worker container
+# never actually starts, so nothing is ever there to dequeue them. Copying
+# the full node_modules (superset of the two Prisma-specific folders this
+# used to copy individually) plus the worker's source is what makes one
+# shared image correctly serve both services.
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/node_modules ./node_modules
 
 USER nextjs
 EXPOSE 10000

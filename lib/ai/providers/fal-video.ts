@@ -47,7 +47,11 @@ export const FAL_VIDEO_MODELS: Record<string, VideoModelConfig> = {
   },
 };
 
-export const DEFAULT_VIDEO_MODEL = "kling-2.1-standard";
+// Seedance 2.0 is the app-wide default (best cost/quality per the
+// Artificial Analysis leaderboard at the time — see the comment on
+// app/api/projects/[id]/generate/route.ts's VIDEO_MODEL, which imports this
+// constant rather than hardcoding its own so the two can never drift).
+export const DEFAULT_VIDEO_MODEL = "seedance-2.0";
 
 interface FalVideoOutput {
   video: { url: string; duration?: number };

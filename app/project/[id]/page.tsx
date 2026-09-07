@@ -9,7 +9,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/client";
 import TimelineEditor from "./timeline-editor";
-import { buildMockTracks, coerceTrackItems, type EditorTrack } from "./timeline-utils";
+import { buildMockTracks, buildAssetTracks, coerceTrackItems, type EditorTrack } from "./timeline-utils";
 import CreativeStudioPanel from "./creative-studio-panel";
 import BrandToolButton from "./brand-tool-button";
 
@@ -29,7 +29,15 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
       assets: { orderBy: { createdAt: "asc" } },
       script: true,
       brandKit: true,
-      scenes: { orderBy: { order: "asc" } },
+      scenes: {
+        orderBy: { order: "asc" },
+        include: {
+          // Only ever need the latest successful clip per scene for
+          // display — the generate route already reads a similar shape to
+          // decide what to skip on regenerate.
+          generatedVideos: { where: { status: "SUCCEEDED" }, orderBy: { createdAt: "desc" }, take: 1 },
+        },
+      },
     },
   });
 
@@ -46,10 +54,17 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
   }));
   const hasRealClips = dbTracks.some((t) => t.items.length > 0);
 
-  const isMock = !hasRealClips;
-  const tracks: EditorTrack[] = isMock
-    ? buildMockTracks(project.assets)
-    : dbTracks;
+  const isMock = !hasRealClips && project.scenes.length === 0;
+  const tracks: EditorTrack[] = hasRealClips
+    ? dbTracks
+    : project.scenes.length > 0
+    ? buildAssetTracks(project.scenes, project.assets)
+    : buildMockTracks(project.assets);
+
+  // First scene with a succeeded clip, for the center preview player —
+  // just picks the first one for now (no scene-selection state yet).
+  const firstReadyVideoUrl = project.scenes.find((s) => s.generatedVideos[0]?.url)?.generatedVideos[0]
+    ?.url;
 
   return (
     <div className="flex h-screen flex-col bg-void text-bone">
@@ -87,7 +102,16 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
         {/* Center: preview + timeline */}
         <div className="flex flex-1 flex-col overflow-hidden">
           <div className="flex flex-1 items-center justify-center bg-obsidian/40">
-            <div className="aspect-[9/16] h-[70%] rounded-xl2 border border-white/10 bg-void" />
+            {firstReadyVideoUrl ? (
+              <video
+                key={firstReadyVideoUrl}
+                src={firstReadyVideoUrl}
+                controls
+                className="aspect-[9/16] h-[70%] rounded-xl2 border border-white/10 bg-void object-cover"
+              />
+            ) : (
+              <div className="aspect-[9/16] h-[70%] rounded-xl2 border border-white/10 bg-void" />
+            )}
           </div>
           <div className="h-72 shrink-0 border-t border-white/10 bg-obsidian/60 p-3">
             <TimelineEditor projectId={project.id} initialTracks={tracks} isMock={isMock} />
