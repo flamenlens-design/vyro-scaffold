@@ -100,23 +100,14 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
         </aside>
 
         {/* Center: preview + timeline */}
-<<<<<<< HEAD
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-obsidian/40">
-=======
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex flex-1 items-center justify-center bg-obsidian/40">
->>>>>>> e8505397e7945dbe5f5eef25bc662fb41c52dedd
             {firstReadyVideoUrl ? (
               <video
                 key={firstReadyVideoUrl}
                 src={firstReadyVideoUrl}
                 controls
-<<<<<<< HEAD
                 className="aspect-[9/16] h-full max-h-full rounded-xl2 border border-white/10 bg-void object-cover"
-=======
-                className="aspect-[9/16] h-[70%] rounded-xl2 border border-white/10 bg-void object-cover"
->>>>>>> e8505397e7945dbe5f5eef25bc662fb41c52dedd
               />
             ) : (
               <div className="aspect-[9/16] h-[70%] rounded-xl2 border border-white/10 bg-void" />
