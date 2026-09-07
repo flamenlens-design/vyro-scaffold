@@ -63,12 +63,17 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
     ? buildAssetTracks(project.scenes, project.assets)
     : buildMockTracks(project.assets);
 
+<<<<<<< HEAD
   // Pass every successfully generated scene clip to the browser preview.
   // The preview can stitch these clips together client-side without waiting
   // for the server-side FFmpeg export job.
   const sceneVideoUrls = project.scenes
     .map((scene) => scene.generatedVideos[0]?.url)
     .filter((url): url is string => Boolean(url));
+=======
+  const previewClips = (tracks.find((t) => t.type === "VIDEO")?.items ?? []).filter((item) => item.thumbUrl);
+  const firstReadyVideoUrl = previewClips[0]?.thumbUrl;
+>>>>>>> b892aa93163778125decc564f39ecbd9a2ef57f1
 
   return (
     <div className="flex h-screen flex-col bg-void text-bone">
